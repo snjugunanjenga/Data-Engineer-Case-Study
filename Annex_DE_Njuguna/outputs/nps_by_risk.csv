@@ -1,0 +1,5 @@
+risk_category,responses,avg_nps,detractor_rate,avg_days_past_due
+Low,2531,7.0344,0.3441,0.0
+Medium,607,7.0181,0.3394,4.117
+High,392,6.5842,0.3776,24.5408
+Critical,455,5.2088,0.5363,201.6088
