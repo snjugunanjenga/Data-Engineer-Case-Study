@@ -1,0 +1,6 @@
+name,status,severity,details
+freshness_not_empty,pass,critical,rows=5000
+duplicate_rows,pass,high,duplicates=0
+null_threshold,fail,medium,"columns=['date_of_birth', 'age_years', 'age_band', 'duration', 'total_income', 'avg_monthly_income', 'avg_monthly_income_band', 'return_date', 'payment_amount', 'adjustment_amount', 'unnamed_28', 'createdat_utc', 'received', 'persons_received_from_total', 'banks_received', 'paybills_received_others', 'income_record_count']"
+reporting_date_valid,pass,high,invalid_dates=0
+risk_category_allowed,pass,medium,invalid=0
