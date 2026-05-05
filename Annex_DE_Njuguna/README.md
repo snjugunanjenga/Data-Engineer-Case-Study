@@ -1,5 +1,11 @@
 # Annex Data Engineer Case Study
 
+## Developer
+
+**Njuguna Njenga**
+
+Data engineer responsible for the case-study implementation, technical analysis, and final reporting package. The work in this submission covers raw data profiling, data quality assessment, ETL pipeline design, feature engineering, portfolio health analysis, NPS analysis, and presentation-ready business recommendations.
+
 ## Project
 
 ABC Phones credit portfolio analysis for the Annex Technologies Limited Data Engineer Case Study.
@@ -79,7 +85,7 @@ python scripts/analysis.py
 - `outputs/portfolio_metrics.csv`: Portfolio health metrics for analysis and slides.
 - `pipeline_design/architecture.png`: Batch ETL architecture diagram.
 - `slides/etl_pipeline_design_slides.pdf`: Three-slide summary of ETL engineering decisions.
-- `slides/Annex_DE_Presentation.pdf`: Final presentation placeholder.
+- `slides/Annex_DE_Presentation.pdf`: Final presentation deck with ETL, data quality, portfolio health, NPS, data gaps, and recommendations.
 
 ## Assumptions
 
