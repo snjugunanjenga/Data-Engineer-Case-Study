@@ -8,7 +8,16 @@ This submission is organized to support repeatable profiling, cleaning, feature 
 
 ## Source Data
 
-Raw source files are kept outside this submission folder under:
+Raw source files can be kept inside this submission folder under:
+
+```text
+data/raw/
+├── credit/Credit Data/
+├── sales_customer/
+└── nps/
+```
+
+The scripts also support the same layout one level above this folder:
 
 ```text
 ../data/raw/
@@ -61,7 +70,7 @@ python scripts/analysis.py
 
 ## Outputs
 
-- `outputs/data_quality_report.md`: Profiling findings, assumptions, and quality issues.
+- `docs/data_quality_report.md`: Profiling findings, assumptions, cleaning decisions, and quality issues.
 - `outputs/cleaned_summary.csv`: Sample cleaned and feature-enriched output.
 - `outputs/portfolio_metrics.csv`: Portfolio health metrics for analysis and slides.
 - `pipeline_design/architecture.png`: Batch ETL architecture diagram.
@@ -73,7 +82,7 @@ python scripts/analysis.py
 - Credit CSV filenames contain reporting dates and can be used to derive snapshot dates.
 - NPS enrichment is optional because not all customers may have survey responses.
 - Income columns should be standardized to numeric values before aggregation.
-- Date parsing decisions and missing-value handling must be documented in `outputs/data_quality_report.md`.
+- Date parsing decisions and missing-value handling must be documented in `docs/data_quality_report.md`.
 
 ## Submission Notes
 

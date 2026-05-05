@@ -4,6 +4,30 @@
 
 This report profiles all credit snapshots, all sheets in the sales/customer workbook, and the NPS survey workbook using pandas.
 
+- Raw data directory: `/workspaces/Data-Engineer-Case-Study/Annex_DE_Njuguna/data/raw`
+
+## Work Performed
+
+- Loaded five credit portfolio CSV snapshots and captured reporting dates from filenames.
+- Loaded every sheet from the sales/customer workbook: Sales Details, Gender, DOB, and Income Level.
+- Loaded the NPS workbook survey sheet.
+- Standardized column names to snake_case for profiling and relationship checks.
+- Calculated row counts, column data types, null counts, null percentages, and unique counts.
+- Checked duplicate full rows and duplicate identifier values.
+- Parsed date-like columns with UTC normalization to detect invalid dates and mixed timezone issues.
+- Profiled date source formats and sample values before cleaning.
+- Profiled numeric and currency-like columns for formatting, non-numeric values, negative values, and ranges.
+- Analyzed `loan_id` join coverage, cardinality, and foreign-key integrity across source datasets.
+- Generated cleaning decisions and justifications for discovered inconsistencies.
+
+## Source Dataset Summary
+
+| source_dataset   |   tables_or_sheets_profiled |   total_rows_profiled |   distinct_columns_observed | profiled_objects                                                                                                                                                         |
+|:-----------------|----------------------------:|----------------------:|----------------------------:|:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| credit           |                           5 |                 71456 |                          36 | credit__Credit Data - 01-01-2025, credit__Credit Data - 30-03-2025, credit__Credit Data - 30-06-2025, credit__Credit Data - 30-09-2025, credit__Credit Data - 30-12-2025 |
+| sales_customer   |                           4 |                150520 |                          27 | sales_customer__Sales Details, sales_customer__Gender, sales_customer__DOB, sales_customer__Income Level                                                                 |
+| nps              |                           1 |                  4129 |                          17 | nps__Sheet1                                                                                                                                                              |
+
 ## Likely Join Keys and Relationship Coverage
 
 | dataset                          | join_key          |   non_null_count |   unique_count |   duplicate_value_count |
@@ -23,6 +47,78 @@ This report profiles all credit snapshots, all sheets in the sales/customer work
 | sales_customer__DOB              | loan_id_to_credit |            11217 |          11217 |                       0 |
 | sales_customer__Income Level     | loan_id_to_credit |            10609 |          10609 |                       0 |
 | nps__Sheet1                      | loan_id_to_credit |             3532 |           3532 |                       0 |
+
+## Relationship Analysis: Cardinality and Foreign-Key Integrity
+
+| child_dataset                    | parent_dataset                | join_key   |   child_rows_with_key |   child_unique_keys |   child_duplicate_key_rows |   matched_parent_keys |   orphan_child_keys |   foreign_key_integrity_percent | cardinality_assessment                     |
+|:---------------------------------|:------------------------------|:-----------|----------------------:|--------------------:|---------------------------:|----------------------:|--------------------:|--------------------------------:|:-------------------------------------------|
+| credit__Credit Data - 01-01-2025 | credit_union                  | loan_id    |                  8935 |                8935 |                          0 |                  8935 |                   0 |                          100    | one-to-one candidate                       |
+| credit__Credit Data - 30-03-2025 | credit_union                  | loan_id    |                 11024 |               11024 |                          0 |                 11024 |                   0 |                          100    | one-to-one candidate                       |
+| credit__Credit Data - 30-06-2025 | credit_union                  | loan_id    |                 13891 |               13891 |                          0 |                 13891 |                   0 |                          100    | one-to-one candidate                       |
+| credit__Credit Data - 30-09-2025 | credit_union                  | loan_id    |                 16864 |               16864 |                          0 |                 16864 |                   0 |                          100    | one-to-one candidate                       |
+| credit__Credit Data - 30-12-2025 | credit_union                  | loan_id    |                 20742 |               20742 |                          0 |                 20742 |                   0 |                          100    | one-to-one candidate                       |
+| sales_customer__Sales Details    | credit_union                  | loan_id    |                 20696 |               20691 |                          5 |                 20689 |                   2 |                           99.99 | many-to-one or repeated-event relationship |
+| sales_customer__Gender           | sales_customer__Sales Details | loan_id    |                 14896 |               10497 |                       4399 |                 10497 |                   0 |                          100    | many-to-one or repeated-event relationship |
+| sales_customer__DOB              | sales_customer__Sales Details | loan_id    |                 13562 |               11217 |                       2345 |                 11217 |                   0 |                          100    | many-to-one or repeated-event relationship |
+| sales_customer__Income Level     | sales_customer__Sales Details | loan_id    |                 11885 |               10609 |                       1276 |                 10609 |                   0 |                          100    | many-to-one or repeated-event relationship |
+| nps__Sheet1                      | credit_union                  | loan_id    |                  4129 |                3532 |                        597 |                  3532 |                   0 |                          100    | many-to-one or repeated-event relationship |
+
+## Inconsistency Summary and Cleaning Decision Log
+
+| dataset                          | issue_type                   | field_or_rule                                                                                                                                                                                                                                                                                                                                                                                                                                                      |   affected_count | cleaning_decision                                                                                                           | justification                                                                                                    |
+|:---------------------------------|:-----------------------------|:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------:|:----------------------------------------------------------------------------------------------------------------------------|:-----------------------------------------------------------------------------------------------------------------|
+| credit__Credit Data - 01-01-2025 | columns_over_50_percent_null | return_date, payment_amount, adjustment_amount                                                                                                                                                                                                                                                                                                                                                                                                                     |                3 | Retain high-null business fields but add missingness flags before analysis.                                                 | High-null fields such as return or adjustment amounts can be sparse by design and still analytically meaningful. |
+| credit__Credit Data - 01-01-2025 | customer_age_outside_18_120  | customer_age                                                                                                                                                                                                                                                                                                                                                                                                                                                       |             6572 | Do not use `customer_age` as age in years until its unit is confirmed; derive age from DOB where available.                 | Observed values exceed normal human age ranges, suggesting a different unit or source-system defect.             |
+| credit__Credit Data - 01-01-2025 | numeric_currency_anomaly     | total_paid                                                                                                                                                                                                                                                                                                                                                                                                                                                         |                1 | Parse numeric/currency fields after stripping formatting, then flag negative or non-numeric values for business validation. | Negative balances or payments may be refunds/adjustments, but they should not be silently coerced or dropped.    |
+| credit__Credit Data - 01-01-2025 | numeric_currency_anomaly     | balance                                                                                                                                                                                                                                                                                                                                                                                                                                                            |                7 | Parse numeric/currency fields after stripping formatting, then flag negative or non-numeric values for business validation. | Negative balances or payments may be refunds/adjustments, but they should not be silently coerced or dropped.    |
+| credit__Credit Data - 01-01-2025 | numeric_currency_anomaly     | closing_balance                                                                                                                                                                                                                                                                                                                                                                                                                                                    |                3 | Parse numeric/currency fields after stripping formatting, then flag negative or non-numeric values for business validation. | Negative balances or payments may be refunds/adjustments, but they should not be silently coerced or dropped.    |
+| credit__Credit Data - 01-01-2025 | numeric_currency_anomaly     | deposit                                                                                                                                                                                                                                                                                                                                                                                                                                                            |                1 | Parse numeric/currency fields after stripping formatting, then flag negative or non-numeric values for business validation. | Negative balances or payments may be refunds/adjustments, but they should not be silently coerced or dropped.    |
+| credit__Credit Data - 01-01-2025 | numeric_currency_anomaly     | total_paid_with_adjustments_15d                                                                                                                                                                                                                                                                                                                                                                                                                                    |                1 | Parse numeric/currency fields after stripping formatting, then flag negative or non-numeric values for business validation. | Negative balances or payments may be refunds/adjustments, but they should not be silently coerced or dropped.    |
+| credit__Credit Data - 30-03-2025 | columns_over_50_percent_null | return_date, payment_amount, adjustment_amount                                                                                                                                                                                                                                                                                                                                                                                                                     |                3 | Retain high-null business fields but add missingness flags before analysis.                                                 | High-null fields such as return or adjustment amounts can be sparse by design and still analytically meaningful. |
+| credit__Credit Data - 30-03-2025 | customer_age_outside_18_120  | customer_age                                                                                                                                                                                                                                                                                                                                                                                                                                                       |             8547 | Do not use `customer_age` as age in years until its unit is confirmed; derive age from DOB where available.                 | Observed values exceed normal human age ranges, suggesting a different unit or source-system defect.             |
+| credit__Credit Data - 30-03-2025 | numeric_currency_anomaly     | total_paid                                                                                                                                                                                                                                                                                                                                                                                                                                                         |                1 | Parse numeric/currency fields after stripping formatting, then flag negative or non-numeric values for business validation. | Negative balances or payments may be refunds/adjustments, but they should not be silently coerced or dropped.    |
+| credit__Credit Data - 30-03-2025 | numeric_currency_anomaly     | balance                                                                                                                                                                                                                                                                                                                                                                                                                                                            |                9 | Parse numeric/currency fields after stripping formatting, then flag negative or non-numeric values for business validation. | Negative balances or payments may be refunds/adjustments, but they should not be silently coerced or dropped.    |
+| credit__Credit Data - 30-03-2025 | numeric_currency_anomaly     | closing_balance                                                                                                                                                                                                                                                                                                                                                                                                                                                    |                3 | Parse numeric/currency fields after stripping formatting, then flag negative or non-numeric values for business validation. | Negative balances or payments may be refunds/adjustments, but they should not be silently coerced or dropped.    |
+| credit__Credit Data - 30-03-2025 | numeric_currency_anomaly     | deposit                                                                                                                                                                                                                                                                                                                                                                                                                                                            |                1 | Parse numeric/currency fields after stripping formatting, then flag negative or non-numeric values for business validation. | Negative balances or payments may be refunds/adjustments, but they should not be silently coerced or dropped.    |
+| credit__Credit Data - 30-03-2025 | numeric_currency_anomaly     | total_paid_with_adjustments_15d                                                                                                                                                                                                                                                                                                                                                                                                                                    |                1 | Parse numeric/currency fields after stripping formatting, then flag negative or non-numeric values for business validation. | Negative balances or payments may be refunds/adjustments, but they should not be silently coerced or dropped.    |
+| credit__Credit Data - 30-06-2025 | unnamed_columns              | unnamed_28                                                                                                                                                                                                                                                                                                                                                                                                                                                         |                1 | Drop unnamed columns when they are empty or have no data dictionary definition.                                             | Unnamed columns are usually spreadsheet artifacts and cannot be interpreted reliably.                            |
+| credit__Credit Data - 30-06-2025 | all_null_columns             | unnamed_28                                                                                                                                                                                                                                                                                                                                                                                                                                                         |                1 | Quarantine or flag affected records for review before downstream use.                                                       | Suspicious values need traceability so analysts can include or exclude them deliberately.                        |
+| credit__Credit Data - 30-06-2025 | columns_over_50_percent_null | return_date, payment_amount, adjustment_amount, unnamed_28                                                                                                                                                                                                                                                                                                                                                                                                         |                4 | Retain high-null business fields but add missingness flags before analysis.                                                 | High-null fields such as return or adjustment amounts can be sparse by design and still analytically meaningful. |
+| credit__Credit Data - 30-06-2025 | customer_age_outside_18_120  | customer_age                                                                                                                                                                                                                                                                                                                                                                                                                                                       |            10732 | Do not use `customer_age` as age in years until its unit is confirmed; derive age from DOB where available.                 | Observed values exceed normal human age ranges, suggesting a different unit or source-system defect.             |
+| credit__Credit Data - 30-06-2025 | numeric_currency_anomaly     | total_paid                                                                                                                                                                                                                                                                                                                                                                                                                                                         |                1 | Parse numeric/currency fields after stripping formatting, then flag negative or non-numeric values for business validation. | Negative balances or payments may be refunds/adjustments, but they should not be silently coerced or dropped.    |
+| credit__Credit Data - 30-06-2025 | numeric_currency_anomaly     | balance                                                                                                                                                                                                                                                                                                                                                                                                                                                            |               34 | Parse numeric/currency fields after stripping formatting, then flag negative or non-numeric values for business validation. | Negative balances or payments may be refunds/adjustments, but they should not be silently coerced or dropped.    |
+| credit__Credit Data - 30-06-2025 | numeric_currency_anomaly     | closing_balance                                                                                                                                                                                                                                                                                                                                                                                                                                                    |                3 | Parse numeric/currency fields after stripping formatting, then flag negative or non-numeric values for business validation. | Negative balances or payments may be refunds/adjustments, but they should not be silently coerced or dropped.    |
+| credit__Credit Data - 30-06-2025 | numeric_currency_anomaly     | deposit                                                                                                                                                                                                                                                                                                                                                                                                                                                            |                1 | Parse numeric/currency fields after stripping formatting, then flag negative or non-numeric values for business validation. | Negative balances or payments may be refunds/adjustments, but they should not be silently coerced or dropped.    |
+| credit__Credit Data - 30-06-2025 | numeric_currency_anomaly     | total_paid_with_adjustments_15d                                                                                                                                                                                                                                                                                                                                                                                                                                    |                1 | Parse numeric/currency fields after stripping formatting, then flag negative or non-numeric values for business validation. | Negative balances or payments may be refunds/adjustments, but they should not be silently coerced or dropped.    |
+| credit__Credit Data - 30-09-2025 | unnamed_columns              | unnamed_28                                                                                                                                                                                                                                                                                                                                                                                                                                                         |                1 | Drop unnamed columns when they are empty or have no data dictionary definition.                                             | Unnamed columns are usually spreadsheet artifacts and cannot be interpreted reliably.                            |
+| credit__Credit Data - 30-09-2025 | all_null_columns             | unnamed_28                                                                                                                                                                                                                                                                                                                                                                                                                                                         |                1 | Quarantine or flag affected records for review before downstream use.                                                       | Suspicious values need traceability so analysts can include or exclude them deliberately.                        |
+| credit__Credit Data - 30-09-2025 | columns_over_50_percent_null | return_date, payment_amount, adjustment_amount, unnamed_28                                                                                                                                                                                                                                                                                                                                                                                                         |                4 | Retain high-null business fields but add missingness flags before analysis.                                                 | High-null fields such as return or adjustment amounts can be sparse by design and still analytically meaningful. |
+| credit__Credit Data - 30-09-2025 | customer_age_outside_18_120  | customer_age                                                                                                                                                                                                                                                                                                                                                                                                                                                       |            13479 | Do not use `customer_age` as age in years until its unit is confirmed; derive age from DOB where available.                 | Observed values exceed normal human age ranges, suggesting a different unit or source-system defect.             |
+| credit__Credit Data - 30-09-2025 | numeric_currency_anomaly     | total_paid                                                                                                                                                                                                                                                                                                                                                                                                                                                         |                1 | Parse numeric/currency fields after stripping formatting, then flag negative or non-numeric values for business validation. | Negative balances or payments may be refunds/adjustments, but they should not be silently coerced or dropped.    |
+| credit__Credit Data - 30-09-2025 | numeric_currency_anomaly     | balance                                                                                                                                                                                                                                                                                                                                                                                                                                                            |               21 | Parse numeric/currency fields after stripping formatting, then flag negative or non-numeric values for business validation. | Negative balances or payments may be refunds/adjustments, but they should not be silently coerced or dropped.    |
+| credit__Credit Data - 30-09-2025 | numeric_currency_anomaly     | closing_balance                                                                                                                                                                                                                                                                                                                                                                                                                                                    |                3 | Parse numeric/currency fields after stripping formatting, then flag negative or non-numeric values for business validation. | Negative balances or payments may be refunds/adjustments, but they should not be silently coerced or dropped.    |
+| credit__Credit Data - 30-09-2025 | numeric_currency_anomaly     | deposit                                                                                                                                                                                                                                                                                                                                                                                                                                                            |                1 | Parse numeric/currency fields after stripping formatting, then flag negative or non-numeric values for business validation. | Negative balances or payments may be refunds/adjustments, but they should not be silently coerced or dropped.    |
+| credit__Credit Data - 30-09-2025 | numeric_currency_anomaly     | total_paid_with_adjustments_15d                                                                                                                                                                                                                                                                                                                                                                                                                                    |                1 | Parse numeric/currency fields after stripping formatting, then flag negative or non-numeric values for business validation. | Negative balances or payments may be refunds/adjustments, but they should not be silently coerced or dropped.    |
+| credit__Credit Data - 30-12-2025 | unnamed_columns              | unnamed_28                                                                                                                                                                                                                                                                                                                                                                                                                                                         |                1 | Drop unnamed columns when they are empty or have no data dictionary definition.                                             | Unnamed columns are usually spreadsheet artifacts and cannot be interpreted reliably.                            |
+| credit__Credit Data - 30-12-2025 | all_null_columns             | unnamed_28                                                                                                                                                                                                                                                                                                                                                                                                                                                         |                1 | Quarantine or flag affected records for review before downstream use.                                                       | Suspicious values need traceability so analysts can include or exclude them deliberately.                        |
+| credit__Credit Data - 30-12-2025 | columns_over_50_percent_null | return_date, payment_amount, adjustment_amount, unnamed_28                                                                                                                                                                                                                                                                                                                                                                                                         |                4 | Retain high-null business fields but add missingness flags before analysis.                                                 | High-null fields such as return or adjustment amounts can be sparse by design and still analytically meaningful. |
+| credit__Credit Data - 30-12-2025 | customer_age_outside_18_120  | customer_age                                                                                                                                                                                                                                                                                                                                                                                                                                                       |            16647 | Do not use `customer_age` as age in years until its unit is confirmed; derive age from DOB where available.                 | Observed values exceed normal human age ranges, suggesting a different unit or source-system defect.             |
+| credit__Credit Data - 30-12-2025 | numeric_currency_anomaly     | total_paid                                                                                                                                                                                                                                                                                                                                                                                                                                                         |                1 | Parse numeric/currency fields after stripping formatting, then flag negative or non-numeric values for business validation. | Negative balances or payments may be refunds/adjustments, but they should not be silently coerced or dropped.    |
+| credit__Credit Data - 30-12-2025 | numeric_currency_anomaly     | balance                                                                                                                                                                                                                                                                                                                                                                                                                                                            |                5 | Parse numeric/currency fields after stripping formatting, then flag negative or non-numeric values for business validation. | Negative balances or payments may be refunds/adjustments, but they should not be silently coerced or dropped.    |
+| credit__Credit Data - 30-12-2025 | numeric_currency_anomaly     | closing_balance                                                                                                                                                                                                                                                                                                                                                                                                                                                    |                3 | Parse numeric/currency fields after stripping formatting, then flag negative or non-numeric values for business validation. | Negative balances or payments may be refunds/adjustments, but they should not be silently coerced or dropped.    |
+| credit__Credit Data - 30-12-2025 | numeric_currency_anomaly     | deposit                                                                                                                                                                                                                                                                                                                                                                                                                                                            |                1 | Parse numeric/currency fields after stripping formatting, then flag negative or non-numeric values for business validation. | Negative balances or payments may be refunds/adjustments, but they should not be silently coerced or dropped.    |
+| credit__Credit Data - 30-12-2025 | numeric_currency_anomaly     | total_paid_with_adjustments_15d                                                                                                                                                                                                                                                                                                                                                                                                                                    |                1 | Parse numeric/currency fields after stripping formatting, then flag negative or non-numeric values for business validation. | Negative balances or payments may be refunds/adjustments, but they should not be silently coerced or dropped.    |
+| sales_customer__Sales Details    | duplicate_identifier         | loan_id                                                                                                                                                                                                                                                                                                                                                                                                                                                            |                5 | Deduplicate only after selecting a deterministic business rule, such as latest timestamp or most complete record.           | Blind row dropping can remove legitimate one-to-many events or survey responses.                                 |
+| sales_customer__Sales Details    | columns_over_50_percent_null | return_date, return_policy_compliance                                                                                                                                                                                                                                                                                                                                                                                                                              |                2 | Retain high-null business fields but add missingness flags before analysis.                                                 | High-null fields such as return or adjustment amounts can be sparse by design and still analytically meaningful. |
+| sales_customer__Gender           | duplicate_identifier         | loan_id                                                                                                                                                                                                                                                                                                                                                                                                                                                            |             4399 | Deduplicate only after selecting a deterministic business rule, such as latest timestamp or most complete record.           | Blind row dropping can remove legitimate one-to-many events or survey responses.                                 |
+| sales_customer__Gender           | columns_over_50_percent_null | loan_id                                                                                                                                                                                                                                                                                                                                                                                                                                                            |                1 | Retain high-null business fields but add missingness flags before analysis.                                                 | High-null fields such as return or adjustment amounts can be sparse by design and still analytically meaningful. |
+| sales_customer__DOB              | duplicate_identifier         | loan_id                                                                                                                                                                                                                                                                                                                                                                                                                                                            |             2345 | Deduplicate only after selecting a deterministic business rule, such as latest timestamp or most complete record.           | Blind row dropping can remove legitimate one-to-many events or survey responses.                                 |
+| sales_customer__DOB              | columns_over_50_percent_null | loan_id                                                                                                                                                                                                                                                                                                                                                                                                                                                            |                1 | Retain high-null business fields but add missingness flags before analysis.                                                 | High-null fields such as return or adjustment amounts can be sparse by design and still analytically meaningful. |
+| sales_customer__Income Level     | duplicate_identifier         | loan_id                                                                                                                                                                                                                                                                                                                                                                                                                                                            |             1276 | Deduplicate only after selecting a deterministic business rule, such as latest timestamp or most complete record.           | Blind row dropping can remove legitimate one-to-many events or survey responses.                                 |
+| sales_customer__Income Level     | numeric_currency_anomaly     | paybills_received_others                                                                                                                                                                                                                                                                                                                                                                                                                                           |               35 | Parse numeric/currency fields after stripping formatting, then flag negative or non-numeric values for business validation. | Negative balances or payments may be refunds/adjustments, but they should not be silently coerced or dropped.    |
+| nps__Sheet1                      | duplicate_identifier         | respondent_id                                                                                                                                                                                                                                                                                                                                                                                                                                                      |              373 | Deduplicate only after selecting a deterministic business rule, such as latest timestamp or most complete record.           | Blind row dropping can remove legitimate one-to-many events or survey responses.                                 |
+| nps__Sheet1                      | duplicate_identifier         | loan_id                                                                                                                                                                                                                                                                                                                                                                                                                                                            |              597 | Deduplicate only after selecting a deterministic business rule, such as latest timestamp or most complete record.           | Blind row dropping can remove legitimate one-to-many events or survey responses.                                 |
+| nps__Sheet1                      | columns_over_50_percent_null | what_is_the_main_reason_for_your_score, what_is_one_thing_we_could_do_to_improve_your_experience_with_us, if_yes_please_describe_the_challenge_you_faced_and_how_we_can_improve_your_experience, have_you_used_the_mophones_app_moapp_to_manage_your_account_or_make_payments, which_communication_channel_do_you_prefer_when_contacting_mophones_for_inquiries_or_support, have_you_ever_had_your_phone_lock_despite_making_a_payment_on_time, any_other_feedback |                7 | Retain high-null business fields but add missingness flags before analysis.                                                 | High-null fields such as return or adjustment amounts can be sparse by design and still analytically meaningful. |
 
 ## Dataset: credit__Credit Data - 01-01-2025
 
@@ -87,6 +183,18 @@ This report profiles all credit snapshots, all sheets in the sales/customer work
 | next_invoice_date        |             8935 |                    0 |                      0 | 2025-01-02 00:00:00+00:00 | 2025-01-08 00:00:00+00:00 |
 | max_payment_date         |             8906 |                    0 |                      0 | 2023-02-08 00:00:00+00:00 | 2025-12-29 00:00:00+00:00 |
 | reporting_date_from_file |             8935 |                    0 |                      0 | 2025-01-01 00:00:00+00:00 | 2025-01-01 00:00:00+00:00 |
+
+### Date Source Format Checks
+
+| column                   |   non_null_count |   iso_like_count |   slash_date_count |   dash_date_count |   timestamp_count | sample_values                      |
+|:-------------------------|-----------------:|-----------------:|-------------------:|------------------:|------------------:|:-----------------------------------|
+| date                     |             8935 |                0 |               8935 |                 0 |                 0 | 1/1/2025                           |
+| return_date              |              986 |                0 |                986 |                 0 |                 0 | 1/22/2025, 11/20/2024, 7/22/2023   |
+| sale_date                |             8935 |                0 |               8935 |                 0 |                 0 | 9/21/2024, 6/4/2024, 12/10/2024    |
+| credit_expiry            |             8935 |                0 |               8935 |                 0 |                 0 | 12/28/2024, 12/31/2024, 12/17/2024 |
+| next_invoice_date        |             8935 |                0 |               8935 |                 0 |                 0 | 1/4/2025, 1/7/2025, 1/3/2025       |
+| max_payment_date         |             8906 |                0 |               8906 |                 0 |                 0 | 1/7/2025, 10/10/2025, 12/10/2024   |
+| reporting_date_from_file |             8935 |             8935 |                  0 |                 0 |                 0 | 2025-01-01                         |
 
 ### Currency and Numeric Inconsistency Checks
 
@@ -184,6 +292,18 @@ This report profiles all credit snapshots, all sheets in the sales/customer work
 | next_invoice_date        |            11024 |                    0 |                      0 | 2025-04-01 00:00:00+00:00 | 2025-04-07 00:00:00+00:00 |
 | max_payment_date         |            10958 |                    0 |                      0 | 2023-02-08 00:00:00+00:00 | 2025-12-30 00:00:00+00:00 |
 | reporting_date_from_file |            11024 |                    0 |                      0 | 2025-03-30 00:00:00+00:00 | 2025-03-30 00:00:00+00:00 |
+
+### Date Source Format Checks
+
+| column                   |   non_null_count |   iso_like_count |   slash_date_count |   dash_date_count |   timestamp_count | sample_values                   |
+|:-------------------------|-----------------:|-----------------:|-------------------:|------------------:|------------------:|:--------------------------------|
+| date                     |            11024 |                0 |              11024 |                 0 |                 0 | 3/31/2025                       |
+| return_date              |             1185 |                0 |               1185 |                 0 |                 0 | 2/13/2025, 6/27/2025, 7/30/2024 |
+| sale_date                |            11024 |                0 |              11024 |                 0 |                 0 | 7/28/2024, 8/10/2024, 9/6/2023  |
+| credit_expiry            |            11024 |                0 |              11024 |                 0 |                 0 | 8/4/2024, 11/2/2024, 9/4/2024   |
+| next_invoice_date        |            11024 |                0 |              11024 |                 0 |                 0 | 4/6/2025, 4/5/2025, 4/2/2025    |
+| max_payment_date         |            10958 |                0 |              10958 |                 0 |                 0 | 7/28/2024, 1/24/2025, 8/10/2024 |
+| reporting_date_from_file |            11024 |            11024 |                  0 |                 0 |                 0 | 2025-03-30                      |
 
 ### Currency and Numeric Inconsistency Checks
 
@@ -283,6 +403,18 @@ This report profiles all credit snapshots, all sheets in the sales/customer work
 | max_payment_date         |            13748 |                    0 |                      0 | 2023-02-08 00:00:00+00:00 | 2025-12-30 00:00:00+00:00 |
 | reporting_date_from_file |            13891 |                    0 |                      0 | 2025-06-30 00:00:00+00:00 | 2025-06-30 00:00:00+00:00 |
 
+### Date Source Format Checks
+
+| column                   |   non_null_count |   iso_like_count |   slash_date_count |   dash_date_count |   timestamp_count | sample_values                    |
+|:-------------------------|-----------------:|-----------------:|-------------------:|------------------:|------------------:|:---------------------------------|
+| date                     |            13891 |                0 |              13891 |                 0 |                 0 | 6/30/2025                        |
+| return_date              |             1402 |                0 |               1402 |                 0 |                 0 | 8/5/2024, 12/17/2024, 8/13/2025  |
+| sale_date                |            13891 |                0 |              13891 |                 0 |                 0 | 12/27/2024, 5/30/2025, 2/26/2024 |
+| credit_expiry            |            13891 |                0 |              13891 |                 0 |                 0 | 1/3/2025, 6/20/2025, 3/3/2025    |
+| next_invoice_date        |            13891 |                0 |              13891 |                 0 |                 0 | 7/4/2025, 7/7/2025, 7/1/2025     |
+| max_payment_date         |            13748 |                0 |              13748 |                 0 |                 0 | 12/27/2024, 6/6/2025, 3/31/2025  |
+| reporting_date_from_file |            13891 |            13891 |                  0 |                 0 |                 0 | 2025-06-30                       |
+
 ### Currency and Numeric Inconsistency Checks
 
 | money_column                    |   non_null_count |   formatted_value_count |   non_numeric_after_cleaning |   negative_count |   min_value |   max_value |
@@ -380,6 +512,18 @@ This report profiles all credit snapshots, all sheets in the sales/customer work
 | next_invoice_date        |            16864 |                    0 |                      0 | 2025-10-01 00:00:00+00:00 | 2025-10-07 00:00:00+00:00 |
 | max_payment_date         |            16658 |                    0 |                      0 | 2023-02-08 00:00:00+00:00 | 2025-12-30 00:00:00+00:00 |
 | reporting_date_from_file |            16864 |                    0 |                      0 | 2025-09-30 00:00:00+00:00 | 2025-09-30 00:00:00+00:00 |
+
+### Date Source Format Checks
+
+| column                   |   non_null_count |   iso_like_count |   slash_date_count |   dash_date_count |   timestamp_count | sample_values                    |
+|:-------------------------|-----------------:|-----------------:|-------------------:|------------------:|------------------:|:---------------------------------|
+| date                     |            16864 |                0 |              16864 |                 0 |                 0 | 9/30/2025                        |
+| return_date              |             1569 |                0 |               1569 |                 0 |                 0 | 7/22/2025, 2/28/2025, 11/17/2023 |
+| sale_date                |            16864 |                0 |              16864 |                 0 |                 0 | 7/27/2024, 10/31/2024, 4/19/2025 |
+| credit_expiry            |            16864 |                0 |              16864 |                 0 |                 0 | 2/8/2025, 11/21/2024, 10/4/2025  |
+| next_invoice_date        |            16864 |                0 |              16864 |                 0 |                 0 | 10/4/2025, 10/2/2025, 10/3/2025  |
+| max_payment_date         |            16658 |                0 |              16658 |                 0 |                 0 | 3/3/2025, 11/16/2024, 12/20/2025 |
+| reporting_date_from_file |            16864 |            16864 |                  0 |                 0 |                 0 | 2025-09-30                       |
 
 ### Currency and Numeric Inconsistency Checks
 
@@ -479,6 +623,18 @@ This report profiles all credit snapshots, all sheets in the sales/customer work
 | max_payment_date         |            20437 |                    0 |                      0 | 2023-02-08 00:00:00+00:00 | 2025-12-30 00:00:00+00:00 |
 | reporting_date_from_file |            20742 |                    0 |                      0 | 2025-12-30 00:00:00+00:00 | 2025-12-30 00:00:00+00:00 |
 
+### Date Source Format Checks
+
+| column                   |   non_null_count |   iso_like_count |   slash_date_count |   dash_date_count |   timestamp_count | sample_values                     |
+|:-------------------------|-----------------:|-----------------:|-------------------:|------------------:|------------------:|:----------------------------------|
+| date                     |            20742 |                0 |              20742 |                 0 |                 0 | 12/30/2025                        |
+| return_date              |             1744 |                0 |                  0 |                 0 |              1744 | 00:00.0                           |
+| sale_date                |            20742 |                0 |              20742 |                 0 |                 0 | 10/15/2024, 8/22/2025, 7/31/2023  |
+| credit_expiry            |            20742 |                0 |              20742 |                 0 |                 0 | 10/14/2025, 1/2/2026, 6/10/2024   |
+| next_invoice_date        |            20742 |                0 |              20742 |                 0 |                 0 | 1/6/2026, 1/2/2026, 1/5/2026      |
+| max_payment_date         |            20437 |                0 |              20437 |                 0 |                 0 | 12/23/2025, 12/25/2025, 1/28/2024 |
+| reporting_date_from_file |            20742 |            20742 |                  0 |                 0 |                 0 | 2025-12-30                        |
+
 ### Currency and Numeric Inconsistency Checks
 
 | money_column                    |   non_null_count |   formatted_value_count |   non_numeric_after_cleaning |   negative_count |   min_value |   max_value |
@@ -514,30 +670,30 @@ This report profiles all credit snapshots, all sheets in the sales/customer work
 
 ## Dataset: sales_customer__Sales Details
 
-- Rows: 1,048,575
+- Rows: 20,747
 - Columns: 16
-- Full duplicate rows: 1,027,827
+- Full duplicate rows: 0
 
 ### Column Profile
 
 | column                   | dtype          |   non_null_count |   null_count |   null_percent |   unique_count |
 |:-------------------------|:---------------|-----------------:|-------------:|---------------:|---------------:|
-| return_date              | datetime64[us] |             1744 |      1046831 |          99.83 |            530 |
-| return_policy_compliance | str            |             1744 |      1046831 |          99.83 |              2 |
-| seller_type              | str            |            15776 |      1032799 |          98.5  |              5 |
-| loan_id                  | str            |            20696 |      1027879 |          98.03 |          20691 |
-| seller                   | str            |            20670 |      1027905 |          98.03 |            519 |
-| business_model           | str            |            20747 |      1027828 |          98.02 |              7 |
-| cash_price               | float64        |            20745 |      1027830 |          98.02 |            259 |
-| client_model             | str            |            20722 |      1027853 |          98.02 |              3 |
-| loan_price               | float64        |            20745 |      1027830 |          98.02 |            930 |
-| loan_term                | str            |            20743 |      1027832 |          98.02 |              3 |
-| model                    | str            |            20745 |      1027830 |          98.02 |             82 |
-| product_name             | str            |            20745 |      1027830 |          98.02 |            132 |
-| returned                 | float64        |            20747 |      1027828 |          98.02 |              2 |
-| sale_date                | datetime64[us] |            20747 |      1027828 |          98.02 |            939 |
-| sale_id                  | str            |            20747 |      1027828 |          98.02 |          20747 |
-| sale_type                | str            |            20745 |      1027830 |          98.02 |              3 |
+| return_date              | datetime64[us] |             1744 |        19003 |          91.59 |            530 |
+| return_policy_compliance | str            |             1744 |        19003 |          91.59 |              2 |
+| seller_type              | str            |            15776 |         4971 |          23.96 |              5 |
+| seller                   | str            |            20670 |           77 |           0.37 |            519 |
+| loan_id                  | str            |            20696 |           51 |           0.25 |          20691 |
+| client_model             | str            |            20722 |           25 |           0.12 |              3 |
+| loan_term                | str            |            20743 |            4 |           0.02 |              3 |
+| cash_price               | float64        |            20745 |            2 |           0.01 |            259 |
+| loan_price               | float64        |            20745 |            2 |           0.01 |            930 |
+| model                    | str            |            20745 |            2 |           0.01 |             82 |
+| product_name             | str            |            20745 |            2 |           0.01 |            132 |
+| sale_type                | str            |            20745 |            2 |           0.01 |              3 |
+| business_model           | str            |            20747 |            0 |           0    |              7 |
+| returned                 | float64        |            20747 |            0 |           0    |              2 |
+| sale_date                | datetime64[us] |            20747 |            0 |           0    |            939 |
+| sale_id                  | str            |            20747 |            0 |           0    |          20747 |
 
 ### Duplicate Identifier Checks
 
@@ -553,6 +709,13 @@ This report profiles all credit snapshots, all sheets in the sales/customer work
 | sale_date     |            20747 |                    0 |                      0 | 2023-02-08 00:00:00+00:00 | 2025-12-29 00:00:00+00:00 |
 | return_date   |             1744 |                    0 |                      0 | 2023-03-16 00:00:00+00:00 | 2025-12-29 00:00:00+00:00 |
 
+### Date Source Format Checks
+
+| column      |   non_null_count |   iso_like_count |   slash_date_count |   dash_date_count |   timestamp_count | sample_values                      |
+|:------------|-----------------:|-----------------:|-------------------:|------------------:|------------------:|:-----------------------------------|
+| sale_date   |            20747 |            20747 |                  0 |                 0 |                 0 | 2025-06-26, 2024-07-15, 2024-08-15 |
+| return_date |             1744 |             1744 |                  0 |                 0 |                 0 | 2025-06-09, 2024-09-02, 2024-10-09 |
+
 ### Currency and Numeric Inconsistency Checks
 
 | money_column   |   non_null_count |   formatted_value_count |   non_numeric_after_cleaning |   negative_count |   min_value |   max_value |
@@ -562,25 +725,25 @@ This report profiles all credit snapshots, all sheets in the sales/customer work
 
 ### Suspicious Values
 
-| issue                        |   count | details                                                                                                                                                                                   |
-|:-----------------------------|--------:|:------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| unnamed_columns              |       0 | none                                                                                                                                                                                      |
-| all_null_columns             |       0 | none                                                                                                                                                                                      |
-| columns_over_50_percent_null |      16 | sale_id, sale_date, returned, return_date, sale_type, seller, seller_type, return_policy_compliance, cash_price, loan_price, client_model, business_model, loan_term, product_name, model |
+| issue                        |   count | details                               |
+|:-----------------------------|--------:|:--------------------------------------|
+| unnamed_columns              |       0 | none                                  |
+| all_null_columns             |       0 | none                                  |
+| columns_over_50_percent_null |       2 | return_date, return_policy_compliance |
 
 ## Dataset: sales_customer__Gender
 
-- Rows: 1,048,575
+- Rows: 49,804
 - Columns: 3
-- Full duplicate rows: 1,038,065
+- Full duplicate rows: 39,295
 
 ### Column Profile
 
 | column      | dtype   |   non_null_count |   null_count |   null_percent |   unique_count |
 |:------------|:--------|-----------------:|-------------:|---------------:|---------------:|
-| loan_id     | str     |            14896 |      1033679 |          98.58 |          10497 |
-| citizenship | str     |            49788 |       998787 |          95.25 |              3 |
-| gender      | str     |            49783 |       998792 |          95.25 |              5 |
+| loan_id     | str     |            14896 |        34908 |          70.09 |          10497 |
+| gender      | str     |            49783 |           21 |           0.04 |              5 |
+| citizenship | str     |            49788 |           16 |           0.03 |              3 |
 
 ### Duplicate Identifier Checks
 
@@ -592,33 +755,37 @@ This report profiles all credit snapshots, all sheets in the sales/customer work
 
 _No applicable columns found._
 
+### Date Source Format Checks
+
+_No applicable columns found._
+
 ### Currency and Numeric Inconsistency Checks
 
 _No applicable columns found._
 
 ### Suspicious Values
 
-| issue                        |   count | details                      |
-|:-----------------------------|--------:|:-----------------------------|
-| unnamed_columns              |       0 | none                         |
-| all_null_columns             |       0 | none                         |
-| columns_over_50_percent_null |       3 | loan_id, citizenship, gender |
+| issue                        |   count | details   |
+|:-----------------------------|--------:|:----------|
+| unnamed_columns              |       0 | none      |
+| all_null_columns             |       0 | none      |
+| columns_over_50_percent_null |       1 | loan_id   |
 
 ## Dataset: sales_customer__DOB
 
-- Rows: 1,048,575
+- Rows: 57,130
 - Columns: 5
-- Full duplicate rows: 991,444
+- Full duplicate rows: 0
 
 ### Column Profile
 
 | column        | dtype   |   non_null_count |   null_count |   null_percent |   unique_count |
 |:--------------|:--------|-----------------:|-------------:|---------------:|---------------:|
-| loan_id       | str     |            13562 |      1035013 |          98.71 |          11217 |
-| date_of_birth | object  |            56921 |       991654 |          94.57 |          17087 |
-| createdat_utc | str     |            57130 |       991445 |          94.55 |          57130 |
-| id            | str     |            57130 |       991445 |          94.55 |          57130 |
-| provider      | str     |            57130 |       991445 |          94.55 |              3 |
+| loan_id       | str     |            13562 |        43568 |          76.26 |          11217 |
+| date_of_birth | object  |            56921 |          209 |           0.37 |          17087 |
+| createdat_utc | str     |            57130 |            0 |           0    |          57130 |
+| id            | str     |            57130 |            0 |           0    |          57130 |
+| provider      | str     |            57130 |            0 |           0    |              3 |
 
 ### Duplicate Identifier Checks
 
@@ -634,34 +801,41 @@ _No applicable columns found._
 | date_of_birth |            56921 |                    0 |                      0 | 1899-11-15 21:00:00+00:00        | 2025-08-08 00:00:00+00:00        |
 | createdat_utc |            57130 |                    0 |                      0 | 2024-11-19 06:20:57.157000+00:00 | 2025-12-31 09:39:38.340000+00:00 |
 
+### Date Source Format Checks
+
+| column        |   non_null_count |   iso_like_count |   slash_date_count |   dash_date_count |   timestamp_count | sample_values                                                                   |
+|:--------------|-----------------:|-----------------:|-------------------:|------------------:|------------------:|:--------------------------------------------------------------------------------|
+| date_of_birth |            56921 |            56921 |                  0 |                 0 |             56921 | 1992-01-15T00:00:00+03:00, 2002-04-13T00:00:00+03:00, 1991-05-17T00:00:00+03:00 |
+| createdat_utc |            57130 |            57130 |                  0 |                 0 |             57130 | 2025-03-03T12:12:02.196Z, 2025-03-03T12:12:02.967Z, 2025-03-03T10:32:05.687Z    |
+
 ### Currency and Numeric Inconsistency Checks
 
 _No applicable columns found._
 
 ### Suspicious Values
 
-| issue                        |   count | details                                             |
-|:-----------------------------|--------:|:----------------------------------------------------|
-| unnamed_columns              |       0 | none                                                |
-| all_null_columns             |       0 | none                                                |
-| columns_over_50_percent_null |       5 | id, provider, date_of_birth, loan_id, createdat_utc |
+| issue                        |   count | details   |
+|:-----------------------------|--------:|:----------|
+| unnamed_columns              |       0 | none      |
+| all_null_columns             |       0 | none      |
+| columns_over_50_percent_null |       1 | loan_id   |
 
 ## Dataset: sales_customer__Income Level
 
-- Rows: 1,048,575
+- Rows: 22,839
 - Columns: 6
-- Full duplicate rows: 1,027,254
+- Full duplicate rows: 1,519
 
 ### Column Profile
 
 | column                      | dtype   |   non_null_count |   null_count |   null_percent |   unique_count |
 |:----------------------------|:--------|-----------------:|-------------:|---------------:|---------------:|
-| loan_id                     | str     |            11885 |      1036690 |          98.87 |          10609 |
-| banks_received              | float64 |            22839 |      1025736 |          97.82 |          16632 |
-| duration                    | float64 |            22839 |      1025736 |          97.82 |             23 |
-| paybills_received_others    | float64 |            22839 |      1025736 |          97.82 |          12560 |
-| persons_received_from_total | float64 |            22839 |      1025736 |          97.82 |          20993 |
-| received                    | float64 |            22839 |      1025736 |          97.82 |          21191 |
+| loan_id                     | str     |            11885 |        10954 |          47.96 |          10609 |
+| banks_received              | float64 |            22839 |            0 |           0    |          16632 |
+| duration                    | float64 |            22839 |            0 |           0    |             23 |
+| paybills_received_others    | float64 |            22839 |            0 |           0    |          12560 |
+| persons_received_from_total | float64 |            22839 |            0 |           0    |          20993 |
+| received                    | float64 |            22839 |            0 |           0    |          21191 |
 
 ### Duplicate Identifier Checks
 
@@ -670,6 +844,10 @@ _No applicable columns found._
 | loan_id             |            11885 |          10609 |                    1276 |
 
 ### Date Inconsistency Checks
+
+_No applicable columns found._
+
+### Date Source Format Checks
 
 _No applicable columns found._
 
@@ -684,11 +862,11 @@ _No applicable columns found._
 
 ### Suspicious Values
 
-| issue                        |   count | details                                                                                            |
-|:-----------------------------|--------:|:---------------------------------------------------------------------------------------------------|
-| unnamed_columns              |       0 | none                                                                                               |
-| all_null_columns             |       0 | none                                                                                               |
-| columns_over_50_percent_null |       6 | loan_id, duration, received, persons_received_from_total, banks_received, paybills_received_others |
+| issue                        |   count | details   |
+|:-----------------------------|--------:|:----------|
+| unnamed_columns              |       0 | none      |
+| all_null_columns             |       0 | none      |
+| columns_over_50_percent_null |       0 | none      |
 
 ## Dataset: nps__Sheet1
 
@@ -732,13 +910,15 @@ _No applicable columns found._
 |:--------------|-----------------:|---------------------:|-----------------------:|:--------------------------|:--------------------------|
 | submitted_at  |             4129 |                    0 |                      0 | 2025-04-22 15:15:00+00:00 | 2025-12-27 02:06:00+00:00 |
 
+### Date Source Format Checks
+
+| column       |   non_null_count |   iso_like_count |   slash_date_count |   dash_date_count |   timestamp_count | sample_values                                                 |
+|:-------------|-----------------:|-----------------:|-------------------:|------------------:|------------------:|:--------------------------------------------------------------|
+| submitted_at |             4129 |             4129 |                  0 |                 0 |              4129 | 2025-04-22 15:15:00, 2025-04-22 15:18:00, 2025-04-22 15:31:00 |
+
 ### Currency and Numeric Inconsistency Checks
 
-| money_column                                                                     |   non_null_count |   formatted_value_count |   non_numeric_after_cleaning |   negative_count | min_value   | max_value   |
-|:---------------------------------------------------------------------------------|-----------------:|------------------------:|-----------------------------:|-----------------:|:------------|:------------|
-| have_you_ever_experienced_a_delay_in_your_payment_reflecting_in_your_abc_account |             2369 |                    2369 |                         2369 |                0 | <NA>        | <NA>        |
-| have_you_used_the_mophones_app_moapp_to_manage_your_account_or_make_payments     |             2060 |                    2060 |                         2060 |                0 | <NA>        | <NA>        |
-| have_you_ever_had_your_phone_lock_despite_making_a_payment_on_time               |             2030 |                    2030 |                         2030 |                0 | <NA>        | <NA>        |
+_No applicable columns found._
 
 ### Suspicious Values
 
@@ -755,3 +935,20 @@ _No applicable columns found._
 - Sheets with repeated `loan_id` values should be handled as one-to-many unless business rules confirm otherwise.
 - `unnamed_*` columns, high-null columns, invalid dates, and non-numeric money values require explicit cleaning rules.
 - NPS records should be treated as optional enrichment because survey coverage is expected to be partial.
+- Missing values are not imputed during profiling; nulls are measured and documented so cleaning rules remain auditable.
+- Date parsing uses `errors='coerce'` and `utc=True` only for quality assessment; invalid parses should be retained as null plus a validation flag during cleaning.
+- Currency and numeric cleaning should strip display formatting but preserve original raw columns or source files for auditability.
+- Negative monetary values are flagged, not automatically removed, because they may represent adjustments, refunds, reversals, or source defects.
+- `customer_age` is treated as suspicious where values fall outside 18-120; final age bands should be derived from DOB as of reporting date where possible.
+
+## Cleaning Decision Principles
+
+| Decision area | Rule | Justification |
+|:--|:--|:--|
+| Column names | Standardize to snake_case. | Consistent names make joins, validation, and downstream SQL/Python code reproducible. |
+| Raw data | Keep raw files immutable. | Auditability requires the ability to reproduce every cleaned value from source. |
+| Duplicate IDs | Resolve with deterministic business rules per table. | Some duplicates are legitimate repeated events or survey responses; blind deduplication can lose information. |
+| Missing values | Flag and document before imputation or exclusion. | Missingness may carry business meaning, especially sparse returns, payments, adjustments, and survey fields. |
+| Dates | Parse explicitly and normalize timezone handling. | Portfolio snapshots, aging, and days-past-due metrics depend on reliable dates. |
+| Currency/numeric values | Strip formatting, convert to numeric, and flag invalid or negative values. | Analysts need numeric fields, but anomalies should remain visible for validation. |
+| Relationships | Treat `loan_id` as the primary analytical join key. | It appears across credit, sales/customer, and NPS sources and gives the strongest cross-dataset coverage. |
