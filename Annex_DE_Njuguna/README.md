@@ -71,9 +71,14 @@ python scripts/analysis.py
 ## Outputs
 
 - `docs/data_quality_report.md`: Profiling findings, assumptions, cleaning decisions, and quality issues.
+- `docs/feature_engineering_report.md`: Feature logic, assumptions, coverage, and category distributions.
+- `docs/etl_pipeline_design.md`: Batch ETL design covering ingestion, transformation, storage, and recovery.
+- `docs/etl_transformation_pseudocode.py`: Annotated pseudocode for the critical ETL transformation path.
 - `outputs/cleaned_summary.csv`: Sample cleaned and feature-enriched output.
+- `outputs/feature_engineered_summary.csv`: Full feature-enriched credit snapshot output.
 - `outputs/portfolio_metrics.csv`: Portfolio health metrics for analysis and slides.
 - `pipeline_design/architecture.png`: Batch ETL architecture diagram.
+- `slides/etl_pipeline_design_slides.pdf`: Three-slide summary of ETL engineering decisions.
 - `slides/Annex_DE_Presentation.pdf`: Final presentation placeholder.
 
 ## Assumptions
